@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 BOARD="radxa-rock-4d"
-BRANCH="edge"
+BRANCH="vendor"
 RELEASE="noble"
 
 BUILD_DESKTOP="no"
