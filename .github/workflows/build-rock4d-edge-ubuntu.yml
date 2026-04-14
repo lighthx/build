@@ -63,7 +63,7 @@ jobs:
       - name: Build image
         shell: bash
         env:
-          DOCKER_ARMBIAN_BASE_IMAGE: ubuntu:noble
+          DOCKER_ARMBIAN_BASE_IMAGE: debian:trixie
         run: |
           set -eux
           ./compile.sh "${{ matrix.preset }}" build
