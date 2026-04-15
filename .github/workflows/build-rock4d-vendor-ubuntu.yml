@@ -31,9 +31,11 @@ jobs:
           - name: Build Vendor Ubuntu Stock UFS Image
             preset: rock4d-ufs-vendor-ubuntu-stock
             artifact_prefix: rock4d-vendor-ubuntu-stock
+            expect_rt: false
           - name: Build Vendor Ubuntu RT UFS Image
             preset: rock4d-ufs-vendor-ubuntu-rt
             artifact_prefix: rock4d-vendor-ubuntu-rt
+            expect_rt: true
 
     steps:
       - name: Checkout
@@ -67,6 +69,39 @@ jobs:
         run: |
           set -eux
           ./compile.sh "${{ matrix.preset }}" build
+
+      - name: Verify RT kernel config
+        if: ${{ matrix.expect_rt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deb="$(find output/debs -maxdepth 1 -type f -name 'linux-image-vendor-rk35xx_*.deb' | head -n1)"
+          if [[ -z "${deb}" ]]; then
+            echo "RT verification failed: linux-image-vendor-rk35xx .deb not found in output/debs" >&2
+            exit 1
+          fi
+
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "${tmpdir}"' EXIT
+          dpkg-deb -x "${deb}" "${tmpdir}"
+
+          cfg="$(find "${tmpdir}/boot" -maxdepth 1 -type f -name 'config-*' | head -n1)"
+          if [[ -z "${cfg}" ]]; then
+            echo "RT verification failed: kernel config file not found inside ${deb}" >&2
+            exit 1
+          fi
+
+          grep -E '^(CONFIG_PREEMPT_RT|CONFIG_PREEMPT_NONE|CONFIG_PREEMPT_VOLUNTARY|CONFIG_HZ=)' "${cfg}" || true
+          grep -q '^CONFIG_PREEMPT_RT=y' "${cfg}" || {
+            echo "RT verification failed: ${cfg} does not contain CONFIG_PREEMPT_RT=y" >&2
+            exit 1
+          }
+
+          grep -q '^CONFIG_HZ=1000' "${cfg}" || {
+            echo "RT verification failed: ${cfg} does not contain CONFIG_HZ=1000" >&2
+            exit 1
+          }
 
       - name: Collect artifacts
         if: always()
