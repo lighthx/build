@@ -1,0 +1,113 @@
+name: Build ROCK 4D Vendor Ubuntu
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-rock4d-vendor-ubuntu.yml
+      - userpatches/config-rock4d-ufs-vendor-ubuntu-*.conf.sh
+      - userpatches/extensions/rock4d-rt-kernel.sh
+      - config/boards/radxa-rock-4d.conf
+      - extensions/ufs.sh
+
+concurrency:
+  group: rock4d-vendor-ubuntu-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build Vendor Ubuntu Stock UFS Image
+            preset: rock4d-ufs-vendor-ubuntu-stock
+            artifact_prefix: rock4d-vendor-ubuntu-stock
+          - name: Build Vendor Ubuntu RT UFS Image
+            preset: rock4d-ufs-vendor-ubuntu-rt
+            artifact_prefix: rock4d-vendor-ubuntu-rt
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Free disk space
+        shell: bash
+        run: |
+          set -eux
+          df -h
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          if [[ -n "${AGENT_TOOLSDIRECTORY:-}" ]]; then
+            sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
+          fi
+          docker system prune -af || true
+          df -h
+
+      - name: Show Docker info
+        shell: bash
+        run: |
+          docker version
+          docker info
+
+      - name: Prepare QEMU binfmt
+        uses: docker/setup-qemu-action@v4
+
+      - name: Build image
+        shell: bash
+        env:
+          DOCKER_ARMBIAN_BASE_IMAGE: debian:trixie
+        run: |
+          set -eux
+          ./compile.sh "${{ matrix.preset }}" build
+
+      - name: Collect artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p artifact/images artifact/logs
+
+          if [[ -d output/images ]]; then
+            find output/images -maxdepth 1 -type f \
+              \( -name '*radxa-rock-4d*' -o -name '*Radxa-rock-4d*' \) \
+              -exec cp -v {} artifact/images/ \; || true
+          fi
+
+          if [[ -d output/logs ]]; then
+            cp -a output/logs/. artifact/logs/
+          fi
+
+          {
+            echo "### ${{ matrix.name }}"
+            if compgen -G 'artifact/images/*' > /dev/null; then
+              printf -- '- %s\n' artifact/images/*
+            else
+              echo '- no images found'
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload images
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_prefix }}-images
+          path: artifact/images
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_prefix }}-logs
+          path: artifact/logs
+          if-no-files-found: warn
+          retention-days: 14
