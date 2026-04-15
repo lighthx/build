@@ -1,3 +1,7 @@
+function extension_prepare_config__690_rock4d_rt_kernel_suffix() {
+	EXTRA_IMAGE_SUFFIXES+=("-rt")
+}
+
 function custom_kernel_config__690_rock4d_rt_kernel_guard() {
 	if [[ "${BRANCH}" != "edge" && "${BRANCH}" != "vendor" ]]; then
 		return 0
@@ -8,7 +12,25 @@ function custom_kernel_config__690_rock4d_rt_kernel_guard() {
 	fi
 
 	if ! grep -q "select ARCH_SUPPORTS_RT" arch/arm64/Kconfig; then
-		exit_with_error "${EXTENSION}: PREEMPT_RT requested, but this kernel tree does not enable ARCH_SUPPORTS_RT for arm64. The build would silently fall back to a non-RT kernel."
+		display_alert "${EXTENSION}" "patching arch/arm64/Kconfig to select ARCH_SUPPORTS_RT" "info"
+		python3 - <<'PY'
+from pathlib import Path
+
+path = Path("arch/arm64/Kconfig")
+text = path.read_text()
+needle = "\tselect ARCH_SUPPORTS_DEBUG_PAGEALLOC\n"
+replacement = needle + "\tselect ARCH_SUPPORTS_RT\n"
+
+if "select ARCH_SUPPORTS_RT" not in text:
+    if needle not in text:
+        raise SystemExit("rock4d-rt-kernel: failed to find insertion point for ARCH_SUPPORTS_RT in arch/arm64/Kconfig")
+    text = text.replace(needle, replacement, 1)
+    path.write_text(text)
+PY
+	fi
+
+	if ! grep -q "select ARCH_SUPPORTS_RT" arch/arm64/Kconfig; then
+		exit_with_error "${EXTENSION}: PREEMPT_RT requested, but arch/arm64/Kconfig still does not enable ARCH_SUPPORTS_RT."
 	fi
 }
 
