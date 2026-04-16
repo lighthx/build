@@ -11,6 +11,7 @@ on:
       - userpatches/extensions/rock4d-rt-kernel.sh
       - config/boards/radxa-rock-4d.conf
       - extensions/ufs.sh
+      - patch/kernel/rk35xx-vendor-6.1/**
 
 concurrency:
   group: rock4d-vendor-ubuntu-${{ github.ref }}
